@@ -224,6 +224,16 @@
             margin-top: -5px;
         }
         .search-results .close-results:hover { border-color: #f12711; color: #f12711; }
+        .search-surah-group { margin-bottom: 15px; }
+        .search-surah-name { color: var(--gold); font-weight: bold; font-size: 1em; margin-bottom: 8px; padding-bottom: 5px; border-bottom: 1px solid var(--border-color); }
+        .search-ayat-item { padding: 8px 12px; border-bottom: 1px solid var(--border-color); transition: background 0.2s; cursor: pointer; border-radius: 8px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+        .search-ayat-item:hover { background: var(--bg-card-hover); }
+        .search-ayat-id { color: var(--gold); font-weight: bold; font-size: 0.85em; margin-right: 5px; }
+        .search-ayat-text { color: var(--text-primary); line-height: 1.5; font-size: 0.9em; flex: 1; }
+        .search-copy-btn { background: none; border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-dim); cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; transition: all 0.2s; flex-shrink: 0; }
+        .search-copy-btn:hover { color: var(--gold); border-color: var(--gold); background: var(--badge-bg); }
+        .search-copy-btn.copied { color: #4CAF50; border-color: #4CAF50; }
+        .search-copy-btn svg { width: 14px; height: 14px; }
         .surah-grid {
             display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
             gap: 15px; margin-bottom: 30px;
@@ -1416,6 +1426,9 @@
             if (!ayatMap[a.Surah]) ayatMap[a.Surah] = [];
             ayatMap[a.Surah].push(a);
         });
+        function escapeRegex(str) {
+            return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
         function toggleTheme() {
             document.body.classList.toggle('light-mode');
             localStorage.setItem('quran-theme', document.body.classList.contains('light-mode') ? 'light' : 'dark');
@@ -1440,30 +1453,68 @@
             const matched = [];
             ayatData.forEach(a => { if (a.Terjemah.toLowerCase().includes(q)) matched.push(a); });
             if (matched.length === 0) { rd.classList.remove('active'); return; }
-            const maxShow = 50;
-            const sn = {}; surahData.forEach(s => { sn[s.Surah] = s.Nama; });
             const searchEsc = escapeRegex(q);
-            rh.innerHTML = 'Hasil Pencarian <span class="result-count">— Ditemukan ' + matched.length + ' ayat dengan kata "' + q + '"</span> <button class="close-results" onclick="closeSearchResults()">&#x2715; Tutup</button>';
-            rl.innerHTML = matched.slice(0, maxShow).map(a => {
+            const sn = {}; surahData.forEach(s => { sn[s.Surah] = s.Nama; });
+            
+            const grouped = {};
+            matched.forEach(a => {
                 const snum = parseInt(a.ID.split(':')[0]);
                 const sname = sn[snum] || a.Surah;
-                const re = new RegExp('(' + searchEsc + ')', 'gi');
-                const hl = a.Terjemah.replace(re, '<span class="highlight">$1</span>');
-                return '<div class="result-item" data-surah="' + snum + '" data-name="' + sname.replace(/'/g, '&#39;') + '"><div class="result-surah">' + a.ID + ' · ' + snum + '. ' + sname + '</div><div class="result-ayat">' + hl + '</div></div>';
-            }).join('');
-            if (matched.length > maxShow) {
-                rl.innerHTML += '<div style="text-align:center;padding:10px;color:var(--text-dim);font-size:0.85em">… dan ' + (matched.length - maxShow) + ' ayat lainnya</div>';
-            }
+                const key = snum + ':' + sname;
+                if (!grouped[key]) grouped[key] = { snum, sname, ayat: [] };
+                grouped[key].ayat.push(a);
+            });
+            
+            rh.innerHTML = 'Hasil Pencarian <span class="result-count">— Ditemukan ' + matched.length + ' Ayat dari kata "' + q + '"</span> <button class="close-results" onclick="closeSearchResults()">&#x2715; Tutup</button>';
+            
+            let html = '';
+            Object.keys(grouped).forEach(key => {
+                const g = grouped[key];
+                html += '<div class="search-surah-group"><div class="search-surah-name">' + g.snum + '. ' + g.sname + ' (Ditemukan ' + g.ayat.length + ' Ayat)</div>';
+                g.ayat.forEach((a, idx) => {
+                    const re = new RegExp('(' + searchEsc + ')', 'gi');
+                    const hl = a.Terjemah.replace(re, '<span class="highlight">$1</span>').replace(/^\d+\.\s*/, '');
+                    const numOnly = a.ID.replace(/^(\d+):(\d+)$/, '$1:$2.');
+                    html += '<div class="search-ayat-item" data-surah="' + g.snum + '" data-name="' + g.sname.replace(/'/g, '&#39;') + '"><span class="search-ayat-id">' + numOnly + '</span> <span class="search-ayat-text">' + hl + '</span><button class="search-copy-btn" data-surah="' + g.snum + '" data-name="' + g.sname.replace(/'/g, '&#39;') + '" data-id="' + a.ID + '" data-text="' + a.Terjemah.replace(/^\d+\.\s*/, '').replace(/"/g, '&quot;') + '" onclick="copySearchAyat(this)" title="Salin ayat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>';
+                });
+                html += '</div>';
+            });
+            rl.innerHTML = html;
             rd.classList.add('active');
         }
         document.addEventListener('click', function(e) {
-            const item = e.target.closest('.result-item');
-            if (item) {
+            const item = e.target.closest('.search-ayat-item');
+            if (item && !e.target.closest('.search-copy-btn')) {
                 closeSearchResults();
                 showAyat(parseInt(item.dataset.surah), item.dataset.name);
             }
         });
         function closeSearchResults() { document.getElementById('searchResults').classList.remove('active'); }
+        function copySearchAyat(btn) {
+            const fullText = btn.dataset.id + '. ' + btn.dataset.text;
+            const origHtml = btn.innerHTML;
+            navigator.clipboard.writeText(fullText).then(() => {
+                btn.classList.add('copied');
+                btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+                setTimeout(() => {
+                    btn.classList.remove('copied');
+                    btn.innerHTML = origHtml;
+                }, 2000);
+            }).catch(() => {
+                const ta = document.createElement('textarea');
+                ta.value = fullText;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                btn.classList.add('copied');
+                btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+                setTimeout(() => {
+                    btn.classList.remove('copied');
+                    btn.innerHTML = origHtml;
+                }, 2000);
+            });
+        }
         function clearSearch() {
             document.getElementById('searchInput').value = '';
             document.getElementById('clearBtn').classList.remove('visible');
